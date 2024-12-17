@@ -23,6 +23,16 @@ interface TranscriptionResponse {
   error: string;
 }
 
+function isAudioRecording(content: string): boolean {
+  return content.startsWith("[:audio {:src \"assets/") && content.endsWith(".acc\"}]");
+}
+
+function extractAudioPath(content: string): string {
+  // Extract path from [:audio {:src "assets/recording_xxxxx.acc"}]
+  const match = content.match(/\[:audio \{:src "([^"]+)"\}\]/);
+  return match ? match[1] : "";
+}
+
 export function getWhisperSettings(): WhisperOptions {
   const whisperLocalEndpoint = logseq.settings!["whisperLocalEndpoint"];
   const modelSize = logseq.settings!["modelSize"];
@@ -44,7 +54,7 @@ async function main() {
     {//README
       key: "headingREADME",
       type: "heading",
-      title: "" ,
+      title: "",
       description: t("This plugin requires a dedicated server that runs in the background. Please start it locally. [README](https://github.com/usoonees/logseq-whisper-subtitles-server)"),
       default: "",
     },
@@ -113,6 +123,8 @@ export async function runWhisper(b: IHookEvent) {
             content = `{{youtube-timestamp ${transcribe.startTime}}} ${content}`
           } else if (source == "local") {
             content = `{{renderer :media-timestamp, ${transcribe.startTime}}} ${content}`
+          } else if (source == "audio") {
+            content = `{{renderer :media-timestamp, ${transcribe.startTime}}} ${content}`
           } else {
             logseq.UI.showMsg(t("source not supported yet"), "warn");
           }
@@ -152,7 +164,14 @@ export async function localWhisper(content: string, whisperOptions: WhisperOptio
   const formData = new FormData();
   formData.append('model_size', whisperOptions.modelSize);
   formData.append('min_length', whisperOptions.minLength);
-  formData.append('text', content);
+  // Handle audio recordings differently from URLs
+  if (isAudioRecording(content)) {
+    const audioPath = extractAudioPath(content);
+    formData.append('audio_path', audioPath);
+    formData.append('is_audio_recording', 'true');
+  } else {
+    formData.append('text', content);
+  }
   formData.append('zh_type', whisperOptions.zhType)
   formData.append('graph_path', graph.path);
 
